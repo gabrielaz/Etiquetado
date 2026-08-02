@@ -3,7 +3,6 @@ from sqlalchemy import Column, Integer, String, Float, ForeignKey, Text, DateTim
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
-
 class LayoutRegionType(Base):
     """Tipo de región de layout: texto principal, notas al margen, firma, etc."""
     __tablename__ = "layout_region_types"
@@ -36,6 +35,7 @@ class LayoutRegion(Base):
     bbox_height = Column(Float, nullable=False)
 
     notes = Column(Text, nullable=True)
+    source = Column(String(50), default="manual")  # 'manual' | 'auto' (ML)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

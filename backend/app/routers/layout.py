@@ -4,11 +4,15 @@ from typing import List
 
 from app.database import get_db
 from app.models.project import Project
+from app.models.document import Document
 from app.models.layout import LayoutRegionType, LayoutRegion
 from app.schemas.layout import (
     LayoutRegionTypeCreate, LayoutRegionTypeUpdate, LayoutRegionTypeOut,
     LayoutRegionCreate, LayoutRegionUpdate, LayoutRegionOut,
+    SegmentedLayoutRegion, LayoutRegionSegmentationResult,
 )
+from app.schemas.word import BBox
+from app.services.layout_ml_service import segment_by_ml
 
 # ─── Tipos de región (por proyecto) ──────────────────────────────────────────
 types_router = APIRouter(prefix="/projects/{project_id}/layout-region-types", tags=["DLA - Tipos de Región"])
@@ -102,6 +106,90 @@ def _enrich(region: LayoutRegion, db: Session) -> LayoutRegionOut:
     out.type_color = rt.color if rt else None
     return out
 
+def _get_document_or_404(document_id: int, db: Session) -> Document:
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    return doc
+
+
+@regions_router.post("/segment", response_model=LayoutRegionSegmentationResult)
+def preview_layout_segmentation(document_id: int, db: Session = Depends(get_db)):
+    """Previsualiza regiones DLA sugeridas por el modelo ML, sin guardar."""
+    doc = _get_document_or_404(document_id, db)
+
+    try:
+        raw_regions = segment_by_ml(doc.file_path)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en segmentación ML: {str(e)}")
+
+    segmented = [
+        SegmentedLayoutRegion(
+            bbox=BBox(x=r["x"], y=r["y"], width=r["width"], height=r["height"]),
+            region_type_name=r["region_type"],
+            confidence=r["confidence"],
+            order_index=r["order_index"],
+        )
+        for r in raw_regions
+    ]
+    return LayoutRegionSegmentationResult(
+        document_id=document_id,
+        total_regions=len(segmented),
+        regions=segmented,
+    )
+
+
+@regions_router.post("/segment/apply", response_model=List[LayoutRegionOut])
+def apply_layout_segmentation(document_id: int, db: Session = Depends(get_db)):
+    """Ejecuta la segmentación ML y persiste las regiones. Reemplaza solo las
+    regiones con source='auto' previas; conserva las dibujadas a mano."""
+    doc = _get_document_or_404(document_id, db)
+
+    try:
+        raw_regions = segment_by_ml(doc.file_path)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en segmentación ML: {str(e)}")
+
+    type_by_name = {
+        rt.name: rt.id
+        for rt in db.query(LayoutRegionType).filter(LayoutRegionType.project_id == doc.project_id).all()
+    }
+    missing = {r["region_type"] for r in raw_regions} - set(type_by_name.keys())
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Faltan tipos de región en este proyecto: {', '.join(missing)}. Corré /seed-defaults primero."
+        )
+
+    db.query(LayoutRegion).filter(
+        LayoutRegion.document_id == document_id,
+        LayoutRegion.source == "auto"
+    ).delete()
+
+    saved = []
+    for r in raw_regions:
+        region = LayoutRegion(
+            document_id=document_id,
+            region_type_id=type_by_name[r["region_type"]],
+            order_index=r["order_index"],
+            bbox_x=float(r["x"]),
+            bbox_y=float(r["y"]),
+            bbox_width=float(r["width"]),
+            bbox_height=float(r["height"]),
+            source="auto",
+        )
+        db.add(region)
+        saved.append(region)
+
+    db.commit()
+    for r in saved:
+        db.refresh(r)
+
+    return [_enrich(r, db) for r in saved]
 
 @regions_router.get("/", response_model=List[LayoutRegionOut])
 def list_regions(document_id: int, db: Session = Depends(get_db)):

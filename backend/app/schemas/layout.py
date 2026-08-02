@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
-
+from app.schemas.word import BBox
 
 # ─── Tipos de región ──────────────────────────────────────────────────────────
 class LayoutRegionTypeBase(BaseModel):
@@ -62,6 +62,7 @@ class LayoutRegionOut(BaseModel):
     bbox_width: float
     bbox_height: float
     notes: Optional[str]
+    source: str = "manual"
     created_at: datetime
     updated_at: datetime
     # Campos aplanados del tipo
@@ -70,3 +71,15 @@ class LayoutRegionOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class SegmentedLayoutRegion(BaseModel):
+    bbox: BBox
+    region_type_name: str
+    confidence: float
+    order_index: int
+
+
+class LayoutRegionSegmentationResult(BaseModel):
+    document_id: int
+    total_regions: int
+    regions: list[SegmentedLayoutRegion]
