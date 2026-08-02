@@ -69,7 +69,7 @@ export function ProjectsPage() {
           <div
             key={p.id}
             onClick={() => navigate(`/projects/${p.id}`)}
-            className="bg-white border border-slate-200 rounded-xl px-6 py-4 flex items-center gap-4 cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all group"
+            className="min-w-0 bg-white border border-slate-200 rounded-xl px-6 py-4 flex items-center gap-4 cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all group"
           >
             <div className="bg-blue-50 rounded-lg p-2.5">
               <FolderOpen size={20} className="text-blue-600" />

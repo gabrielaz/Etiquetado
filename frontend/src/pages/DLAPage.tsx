@@ -6,7 +6,7 @@ import { useAsync } from '../hooks/useAsync'
 import { DLACanvas } from '../components/DLACanvas'
 import { DLAPanel } from '../components/labeling/DLAPanel'
 import { Button } from '../components/Button'
-import type { LayoutRegion, LayoutRegionType } from '../types'
+import type { LayoutRegion, LayoutRegionType, SegmentedLayoutRegion } from '../types'
 
 export function DLAPage() {
   const { projectId, documentId } = useParams<{ projectId: string; documentId: string }>()
@@ -21,6 +21,8 @@ export function DLAPage() {
   const [regionTypes, setRegionTypes] = useState<LayoutRegionType[]>([])
   const [selectedRegionId, setSelectedRegionId] = useState<number | null>(null)
   const [drawingMode, setDrawingMode] = useState(false)
+  const [previewRegions, setPreviewRegions] = useState<SegmentedLayoutRegion[]>([])
+  const [segmenting, setSegmenting] = useState(false)
 
   useEffect(() => {
     api.layoutRegions.list(did).then(setRegions)
@@ -43,6 +45,33 @@ export function DLAPage() {
     setSelectedRegionId(region.id)
     setDrawingMode(false)
   }, [did, regions.length])
+
+  // ─── Segmentación automática (ML) ────────────────────────────────────────
+  const handlePreviewSegmentation = useCallback(async () => {
+    setSegmenting(true)
+    try {
+      const result = await api.layoutRegions.segmentPreview(did)
+      setPreviewRegions(result.regions)
+    } catch (e) {
+      alert('Error en la segmentación: ' + (e instanceof Error ? e.message : e))
+    } finally {
+      setSegmenting(false)
+    }
+  }, [did])
+
+  const handleApplySegmentation = useCallback(async () => {
+    if (!confirm('¿Aplicar segmentación automática? Las regiones auto existentes serán reemplazadas.')) return
+    setSegmenting(true)
+    try {
+      const result = await api.layoutRegions.segmentApply(did)
+      setRegions(prev => [...prev.filter(r => r.source === 'manual'), ...result])
+      setPreviewRegions([])
+    } catch (e) {
+      alert('Error: ' + (e instanceof Error ? e.message : e))
+    } finally {
+      setSegmenting(false)
+    }
+  }, [did])
 
   // ─── Mover / redimensionar ────────────────────────────────────────────────
   const handleRegionMoved = useCallback(async (id: number, x: number, y: number, w: number, h: number) => {
@@ -126,6 +155,7 @@ export function DLAPage() {
         <DLACanvas
           imageUrl={imageUrl}
           regions={regions}
+          previewRegions={previewRegions}
           selectedRegionId={selectedRegionId}
           onSelectRegion={setSelectedRegionId}
           onRegionMoved={handleRegionMoved}
@@ -145,6 +175,10 @@ export function DLAPage() {
           onSeedDefaults={handleSeedDefaults}
           drawingMode={drawingMode}
           onToggleDrawingMode={() => setDrawingMode(d => !d)}
+          onPreviewSegmentation={handlePreviewSegmentation}
+          onApplySegmentation={handleApplySegmentation}
+          segmenting={segmenting}
+          previewCount={previewRegions.length > 0 ? previewRegions.length : null}
         />
       </div>
     </div>

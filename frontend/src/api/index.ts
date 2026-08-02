@@ -5,7 +5,7 @@ import type {
   LabelSchema, LabelSchemaCreate,
   SegmentationResult, SegmentationMethod,
   LayoutRegionType, LayoutRegionTypeCreate,
-  LayoutRegion, LayoutRegionCreate, LayoutRegionUpdate,
+  LayoutRegion, LayoutRegionCreate, LayoutRegionUpdate, LayoutRegionSegmentationResult,
 } from '../types'
 
 const BASE = 'http://localhost:8000/api/v1'
@@ -154,5 +154,13 @@ export const api = {
       }),
     delete: (docId: number, regionId: number) =>
       fetch(`${BASE}/documents/${docId}/layout-regions/${regionId}`, { method: 'DELETE' }),
+    segmentPreview: (docId: number) =>
+      request<LayoutRegionSegmentationResult>(`/documents/${docId}/layout-regions/segment`, {
+        method: 'POST',
+      }),
+    segmentApply: (docId: number) =>
+      request<LayoutRegion[]>(`/documents/${docId}/layout-regions/segment/apply`, {
+        method: 'POST',
+      }),
   },
 }

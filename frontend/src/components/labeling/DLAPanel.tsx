@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, Pencil, X, Check, StickyNote, LayoutTemplate } from 'lucide-react'
+import { Plus, Trash2, Pencil, X, Check, StickyNote, LayoutTemplate, Wand2, AlertCircle } from 'lucide-react'
 import clsx from 'clsx'
 import type { LayoutRegion, LayoutRegionType } from '../../types'
 import { Button } from '../Button'
@@ -16,19 +16,24 @@ interface DLAPanelProps {
   onAddType: (name: string, color: string, shortcut: string) => void
   onDeleteType: (typeId: number) => void
   onSeedDefaults: () => void
+  onPreviewSegmentation: () => void
+  onApplySegmentation: () => void
+  segmenting: boolean
+  previewCount: number | null
   drawingMode: boolean
   onToggleDrawingMode: () => void
 }
 
 const PRESET_COLORS = [
-  '#3B82F6','#EF4444','#10B981','#F59E0B',
-  '#8B5CF6','#EC4899','#6366F1','#84CC16',
+  '#3B82F6', '#EF4444', '#10B981', '#F59E0B',
+  '#8B5CF6', '#EC4899', '#6366F1', '#84CC16',
 ]
 
 export function DLAPanel({
   regions, regionTypes, selectedRegionId,
   onSelectRegion, onAssignType, onUpdateNotes, onDeleteRegion,
   onAddType, onDeleteType, onSeedDefaults,
+  onPreviewSegmentation, onApplySegmentation, segmenting, previewCount,
   drawingMode, onToggleDrawingMode,
 }: DLAPanelProps) {
   const [showAddType, setShowAddType] = useState(false)
@@ -59,6 +64,38 @@ export function DLAPanel({
 
   return (
     <div className="w-80 bg-white border-l border-slate-200 flex flex-col overflow-hidden">
+
+      {/* ── Segmentación automática (ML) ───────────────────────────────────── */}
+      <div className="p-4 border-b border-slate-100">
+        <div className="flex items-center gap-2 mb-3">
+          <Wand2 size={15} className="text-amber-500" />
+          <span className="text-sm font-semibold text-slate-700">Segmentación automática (ML)</span>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            disabled={segmenting}
+            onClick={onPreviewSegmentation}
+            className="flex-1 text-xs font-medium px-3 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+          >
+            {segmenting ? 'Analizando…' : 'Previsualizar'}
+          </button>
+          <button
+            disabled={segmenting}
+            onClick={onApplySegmentation}
+            className="flex-1 text-xs font-medium px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            Aplicar
+          </button>
+        </div>
+
+        {previewCount !== null && (
+          <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+            <AlertCircle size={11} />
+            {previewCount} regiones detectadas (contornos punteados)
+          </p>
+        )}
+      </div>
 
       {/* ── Herramienta de dibujo ──────────────────────────────────────────── */}
       <div className="px-4 py-3 border-b border-slate-100">
