@@ -46,6 +46,9 @@ backend/uploads/
 # --- Datasets e imagenes de prueba (no versionar, se regeneran o viven fuera del repo) ---
 colab/dataset_layout/
 colab/dataset_*.zip
+# Las imagenes exportadas son copias PNG de datos-docente/ (regenerables con
+# build_gt_pixel.py); las mascaras GT si se versionan, porque la DB no esta en git.
+colab/dataset_layout_arabe/images/
 pruebas-etiquetado/
 *.tif
 *.tiff
