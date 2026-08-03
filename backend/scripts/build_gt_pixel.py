@@ -16,6 +16,22 @@ Por que hace falta:
     (y los mismos hiperparametros, ventana 31, k=0.2) que el paper aplica a sus
     *predicciones* en la etapa de refinamiento, aplicada aca al GT.
 
+Salidas (las dos hacen falta, cumplen roles distintos):
+    masks/        GT pixel-precise (rectangulo INTERSECTADO con tinta). Es contra
+                  esto que se calcula el F1, porque es lo que mide el paper.
+    masks_region/ mapa de clases rectangular, SIN intersectar con tinta. Es el
+                  target de ENTRENAMIENTO de la red.
+
+    Por que dos: entrenar la red directamente contra masks/ la hace colapsar a
+    predecir todo fondo. Con output_stride 8 o 16 una red de segmentacion no puede
+    delinear trazos de tinta de 2-3 pixeles, y bajo Jaccard/Dice le sale mas barato
+    no predecir nada que predecir un borron mal alineado. Medido: entrenando contra
+    masks/ el F1 da 0.000; contra masks_region/, con Sauvola aplicado despues en
+    inferencia, da 0.610 en las mismas condiciones.
+
+    Esto es exactamente el diseno de dos etapas del paper: la red hace la
+    segmentacion gruesa (regiones) y Sauvola la recorta a tinta.
+
 Uso:
     cd backend
     python -m scripts.build_gt_pixel --project-id 2 --out ../colab/dataset_layout_arabe
@@ -96,8 +112,9 @@ def build_pixel_gt(img_rgb: np.ndarray, class_map: np.ndarray) -> np.ndarray:
 def export(project_id: int, out_dir: str) -> None:
     images_dir = os.path.join(out_dir, "images")
     masks_dir = os.path.join(out_dir, "masks")
+    regions_dir = os.path.join(out_dir, "masks_region")
     preview_dir = os.path.join(out_dir, "masks_preview")
-    for d in (images_dir, masks_dir, preview_dir):
+    for d in (images_dir, masks_dir, regions_dir, preview_dir):
         os.makedirs(d, exist_ok=True)
 
     db = SessionLocal()
@@ -125,12 +142,14 @@ def export(project_id: int, out_dir: str) -> None:
 
             img.save(os.path.join(images_dir, f"{doc.id}.png"))
             Image.fromarray(gt, mode="L").save(os.path.join(masks_dir, f"{doc.id}.png"))
+            Image.fromarray(class_map, mode="L").save(os.path.join(regions_dir, f"{doc.id}.png"))
             _colorize(Image.fromarray(gt, mode="L")).save(os.path.join(preview_dir, f"{doc.id}.png"))
 
             cobertura = {c: float((gt == c).mean()) for c in (1, 2)}
             print(
                 f"[ok] Document {doc.id} ({doc.original_filename}) — "
-                f"principal {cobertura[1]:.2%} / marginal {cobertura[2]:.2%} de la pagina"
+                f"principal {cobertura[1]:.2%} / marginal {cobertura[2]:.2%} de tinta, "
+                f"region {(class_map > 0).mean():.1%} de la pagina"
             )
             exported += 1
 
