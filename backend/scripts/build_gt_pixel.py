@@ -86,13 +86,11 @@ def build_pixel_gt(img_rgb: np.ndarray, class_map: np.ndarray) -> np.ndarray:
         img_rgb   -- (H, W, 3) uint8, la pagina original.
         class_map -- (H, W) uint8 con 0/1/2, salida de rasterize_regions().
 
-    Salida esperada:
+    Salida:
         (H, W) uint8 con 0/1/2, donde un pixel vale 1 o 2 solo si ademas es tinta.
-        Todo lo que sea papel dentro de un rectangulo debe volver a 0.
-
-    TODO (tsuki): implementar. Es una linea usando ink_mask(img_rgb).
+        Todo lo que sea papel dentro de un rectangulo vuelve a 0.
     """
-    raise NotImplementedError("Pendiente: intersectar class_map con ink_mask(img_rgb)")
+    return np.where(ink_mask(img_rgb), class_map, 0).astype(np.uint8)
 
 
 def export(project_id: int, out_dir: str) -> None:
