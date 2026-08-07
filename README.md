@@ -1,5 +1,5 @@
-#Etiquetado de archivos historicos
-# Caracteristicas del Sistema
+# Etiquetado de archivos historicos
+## Caracteristicas del Sistema
 * Frontend (UI)         →  React + TypeScript + Vite
 * Backend (API)         →  FastAPI (Python)
 * Base de Datos         →  SQLite (dev) / PostgreSQL (prod)
