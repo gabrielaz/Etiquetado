@@ -1,4 +1,28 @@
+import importlib
+from pathlib import Path
+
 from paper_replica.config import Config
+
+
+def test_diva_root_por_defecto_cuelga_del_repo(monkeypatch):
+    import paper_replica.config as mod
+
+    monkeypatch.delenv("DIVA_ROOT", raising=False)
+    recargado = importlib.reload(mod)
+    assert recargado.DIVA_ROOT.name == "fewshot_data"
+    assert recargado.DIVA_ROOT.parent.name == "datos-diva"
+
+
+def test_diva_root_se_puede_sobreescribir_por_entorno(monkeypatch, tmp_path):
+    """Colab clona el repo y los datos en directorios hermanos, no anidados."""
+    import paper_replica.config as mod
+
+    monkeypatch.setenv("DIVA_ROOT", str(tmp_path / "otro" / "fewshot_data"))
+    recargado = importlib.reload(mod)
+    assert recargado.DIVA_ROOT == Path(tmp_path / "otro" / "fewshot_data")
+
+    monkeypatch.delenv("DIVA_ROOT", raising=False)
+    importlib.reload(mod)
 
 
 def test_config_grid_derives_from_patch_size():

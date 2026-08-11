@@ -7,10 +7,25 @@ del paper WACV 2024 (Xception, 672 px, Jaccard+Dice, 12 crops).
 Ver docs/replica-denardin/2026-08-10-diseno.md
 """
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
-DIVA_ROOT = Path(__file__).resolve().parents[2] / "datos-diva" / "fewshot_data"
+
+def _diva_root() -> Path:
+    """Raiz de los datos de DIVA-HisDB.
+
+    Por defecto, <repo>/datos-diva/fewshot_data. La variable de entorno
+    DIVA_ROOT la sobreescribe, que es lo que se usa en Colab, donde el repo y
+    los datos se clonan en directorios hermanos.
+    """
+    env = os.environ.get("DIVA_ROOT")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parents[2] / "datos-diva" / "fewshot_data"
+
+
+DIVA_ROOT = _diva_root()
 
 MANUSCRITOS = ("CB55", "CS18", "CS863")
 
