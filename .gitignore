@@ -67,3 +67,9 @@ Thumbs.db
 logs/
 tmp/
 .ipynb_checkpoints/
+
+# --- Replica De Nardin (fase 1) ---
+datos-diva/
+backend/paper_replica/.venv/
+backend/paper_replica/runs/
+backend/paper_replica/**/__pycache__/
