@@ -73,3 +73,5 @@ datos-diva/
 backend/paper_replica/.venv/
 backend/paper_replica/runs/
 backend/paper_replica/**/__pycache__/
+
+paper_replica.zip
