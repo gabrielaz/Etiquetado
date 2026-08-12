@@ -13,6 +13,7 @@ from paper_replica.evaluate import (
     f1_binario_macro,
     f1_clase,
     matriz_confusion,
+    metricas_desde_confusion,
     reensamblar,
     refinar,
 )
@@ -20,8 +21,15 @@ from paper_replica.model import crear_modelo
 
 NOMBRES_CLASE = {1: "comment", 2: "decoration", 3: "text"}
 
-# README del repo oficial axelden/Few-shot-DIA-WACV2023
-F1_OFICIAL = {"CB55": 0.991, "CS18": 0.984, "CS863": 0.975}
+# Tabla del README del repo oficial axelden/Few-shot-DIA-WACV2023.
+# Son la salida de get_scores(average="weighted"): sklearn sobre todos los
+# pixeles del split juntos, las 4 clases, fondo incluido.
+METRICAS_OFICIALES = {
+    "CB55": {"precision": 0.991, "recall": 0.991, "iou": 0.982, "f1": 0.991},
+    "CS18": {"precision": 0.984, "recall": 0.984, "iou": 0.970, "f1": 0.984},
+    "CS863": {"precision": 0.977, "recall": 0.974, "iou": 0.956, "f1": 0.975},
+}
+F1_OFICIAL = {m: v["f1"] for m, v in METRICAS_OFICIALES.items()}
 TOLERANCIA = 0.02
 
 
@@ -32,7 +40,11 @@ def evaluar_manuscrito(
     device: str = "cuda",
     split: str = "public-test",
     refinamiento: bool = True,
+    min_size: int = 0,
 ) -> dict:
+    """min_size=0 por defecto: test.py del repo oficial importa removeSmallCC
+    pero nunca lo llama. Su refinamiento es solo la multiplicacion por la
+    mascara de tinta de Sauvola."""
     ds = DivaDataset(manuscrito, split, cfg, con_crops=False)
 
     model = crear_modelo(cfg).to(device)
@@ -59,7 +71,7 @@ def evaluar_manuscrito(
 
         if refinamiento:
             img_patches = (patches.permute(0, 2, 3, 1).numpy() * 255).astype(np.uint8)
-            pred = refinar(pred, reensamblar(img_patches, cfg), cfg)
+            pred = refinar(pred, reensamblar(img_patches, cfg), cfg, min_size=min_size)
 
         for c in NOMBRES_CLASE:
             f1_a[c].append(f1_clase(pred, gt, c))
@@ -73,6 +85,11 @@ def evaluar_manuscrito(
         "manuscrito": manuscrito,
         "split": split,
         "refinamiento": refinamiento,
+        "min_size": min_size,
+        # la metrica que decide el veredicto: la del repo oficial
+        "oficial": metricas_desde_confusion(confusion),
+        # las dos lecturas del F1 del paper quedan como diagnostico: son macro
+        # sobre las 3 clases de primer plano, no comparables con el README
         "f1_variante_a": {NOMBRES_CLASE[c]: float(np.mean(v)) for c, v in f1_a.items()},
         "f1_variante_b": {NOMBRES_CLASE[c]: float(np.mean(v)) for c, v in f1_b.items()},
         "media_a": float(np.mean([np.mean(v) for v in f1_a.values()])),
@@ -83,28 +100,35 @@ def evaluar_manuscrito(
 
 
 def imprimir_veredicto(resultados: list[dict]) -> bool:
-    """Contrasta contra el criterio de aceptacion de la fase 1. Devuelve True
-    si los tres manuscritos entran en la tolerancia con alguna variante."""
-    print(f"{'manuscrito':<10} {'variante':<10} {'obtenido':>9} "
-          f"{'oficial':>8} {'delta':>8}  estado")
-    print("-" * 58)
+    """Contrasta contra el criterio de aceptacion de la fase 1.
 
+    El veredicto se decide con la metrica del repo oficial (weighted sobre las
+    4 clases, fondo incluido). Se imprimen las cuatro cifras publicadas, no solo
+    el F1: reproducir el F1 y errarle al IoU significaria que la agregacion
+    todavia no es la correcta.
+    """
+    print(f"{'manuscrito':<9} {'fuente':<9} {'prec':>8} {'rec':>8} "
+          f"{'iou':>8} {'f1':>8}   estado")
+    print("-" * 62)
+
+    claves = ("precision", "recall", "iou", "f1")
     pasa_todo = True
     for r in resultados:
-        oficial = F1_OFICIAL[r["manuscrito"]]
-        ok_alguna = False
-        for variante, clave in (("A", "media_a"), ("B", "media_b")):
-            delta = r[clave] - oficial
-            # redondeo para que el borde exacto de la tolerancia entre: la
-            # resta en punto flotante deja residuos de ~1e-17
-            ok = round(abs(delta), 6) <= TOLERANCIA
-            ok_alguna = ok_alguna or ok
-            print(
-                f"{r['manuscrito']:<10} {variante:<10} {r[clave]:>9.4f} "
-                f"{oficial:>8.3f} {delta:>+8.4f}  {'OK' if ok else 'FUERA'}"
-            )
-        pasa_todo = pasa_todo and ok_alguna
+        pub = METRICAS_OFICIALES[r["manuscrito"]]
+        obt = r["oficial"]["weighted"]
+        # redondeo para que el borde exacto de la tolerancia entre: la resta en
+        # punto flotante deja residuos de ~1e-17
+        ok = round(abs(obt["f1"] - pub["f1"]), 6) <= TOLERANCIA
+        pasa_todo = pasa_todo and ok
 
-    print()
+        print(f"{r['manuscrito']:<9} {'oficial':<9} "
+              + " ".join(f"{pub[k]:>8.3f}" for k in claves))
+        print(f"{'':9} {'nuestro':<9} "
+              + " ".join(f"{obt[k]:>8.4f}" for k in claves)
+              + f"   {'OK' if ok else 'FUERA'}")
+        print(f"{'':9} {'delta':<9} "
+              + " ".join(f"{obt[k] - pub[k]:>+8.4f}" for k in claves))
+        print()
+
     print("FASE 1 SUPERADA" if pasa_todo else "FASE 1 NO SUPERADA -- no avanzar")
     return pasa_todo

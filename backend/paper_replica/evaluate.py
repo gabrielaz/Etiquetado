@@ -56,6 +56,57 @@ def matriz_confusion(pred: np.ndarray, gt: np.ndarray, n_classes: int) -> np.nda
     return np.bincount(idx, minlength=n_classes**2).reshape(n_classes, n_classes)
 
 
+def metricas_desde_confusion(cm: np.ndarray) -> dict:
+    """Metricas del repo oficial, derivadas de la matriz de confusion.
+
+    `cm[i, j]` = pixeles con gt==i y pred==j.
+
+    test.py de axelden/Few-shot-DIA-WACV2023 llama a `get_scores(average=...)`,
+    que son las funciones de sklearn sobre la concatenacion plana de todos los
+    pixeles del split, con las 4 clases y el fondo incluido. Los numeros del
+    README son la variante `weighted`; `macro` se imprime debajo.
+
+    Se calcula en forma cerrada desde la matriz en vez de guardar los arrays de
+    pixeles: la matriz es estadistico suficiente para cualquier agregacion, pesa
+    unos pocos bytes y permite recalcular sin el modelo ni la GPU. Los tests
+    verifican paridad exacta con sklearn.
+    """
+    cm = np.asarray(cm, dtype=np.float64)
+    tp = np.diag(cm)
+    soporte = cm.sum(axis=1)  # pixeles reales de cada clase (gt)
+    predichos = cm.sum(axis=0)
+    fp = predichos - tp
+    fn = soporte - tp
+
+    def _div(num, den):
+        return np.divide(num, den, out=np.zeros_like(num), where=den > 0)
+
+    por_clase = {
+        "precision": _div(tp, tp + fp),
+        "recall": _div(tp, tp + fn),
+        "f1": _div(2 * tp, 2 * tp + fp + fn),
+        "iou": _div(tp, tp + fp + fn),
+    }
+
+    # sklearn promedia sobre las etiquetas presentes en y_true o en y_pred; una
+    # clase ausente de ambos no debe arrastrar el macro hacia cero
+    presentes = (soporte > 0) | (predichos > 0)
+    total = cm.sum()
+
+    resultado = {
+        "accuracy": float(tp.sum() / total) if total > 0 else 0.0,
+        "soporte": soporte.astype(np.int64).tolist(),
+        "por_clase": {k: v.tolist() for k, v in por_clase.items()},
+    }
+    for nombre, pesos in (("macro", presentes.astype(np.float64)), ("weighted", soporte)):
+        suma = pesos.sum()
+        resultado[nombre] = {
+            k: float(np.dot(v, pesos) / suma) if suma > 0 else 0.0
+            for k, v in por_clase.items()
+        }
+    return resultado
+
+
 def mascara_tinta(img_rgb: np.ndarray, window_size: int, k: float) -> np.ndarray:
     gris = rgb2gray(img_rgb)
     return gris < threshold_sauvola(gris, window_size=window_size, k=k)
