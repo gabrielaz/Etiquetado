@@ -109,16 +109,23 @@ def segment_by_contour(image_path: str,
     img_h, img_w = img.shape[:2]
     thresh = _preprocess(img)
 
+    # Apertura morfológica: elimina motas de tinta/ruido de papel antes de fusionar
+    # letras, para que no se cuenten como palabras (ver calibración con GT real).
+    denoise_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, denoise_kernel)
+
     # Operación morfológica para conectar letras de la misma palabra
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (merge_gap_x, 3))
-    dilated = cv2.dilate(thresh, kernel, iterations=1)
+    dilated = cv2.dilate(opened, kernel, iterations=1)
 
     contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     raw_boxes = []
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
-        if _filter_bbox(x, y, w, h, img_w, img_h):
+        # min_area calibrado contra GT real (mediana ~36873px², p5 ~13143px²)
+        # a 400 DPI — 100 (default) dejaba pasar manchas y motas de tinta.
+        if _filter_bbox(x, y, w, h, img_w, img_h, min_area=5000):
             raw_boxes.append((x, y, w, h))
 
     # Ordenar de arriba a abajo, izquierda a derecha
@@ -139,6 +146,41 @@ def segment_by_contour(image_path: str,
     return results
 
 
+def _segment_1d(proj: np.ndarray, threshold: float, min_gap: int, min_run: int) -> List[Tuple[int, int]]:
+    """
+    Agrupa un perfil de proyección 1D en segmentos [start, end) por encima del
+    umbral, tolerando huecos cortos (< min_gap muestras) para no cortar por una
+    plumada/rúbrica que cruza brevemente el hueco entre línea o palabra.
+    Descarta segmentos más angostos que min_run.
+    """
+    segments: List[Tuple[int, int]] = []
+    in_seg = False
+    seg_start = 0
+    gap_start = None
+
+    for i, val in enumerate(proj):
+        if val > threshold:
+            if not in_seg:
+                in_seg = True
+                seg_start = i
+            gap_start = None
+        elif in_seg:
+            if gap_start is None:
+                gap_start = i
+            if i - gap_start >= min_gap:
+                if gap_start - seg_start >= min_run:
+                    segments.append((seg_start, gap_start))
+                in_seg = False
+                gap_start = None
+
+    if in_seg:
+        end = gap_start if gap_start is not None else len(proj)
+        if end - seg_start >= min_run:
+            segments.append((seg_start, end))
+
+    return segments
+
+
 def segment_by_projection(image_path: str) -> List[dict]:
     """
     Detecta palabras usando proyección horizontal (line detection) y
@@ -151,22 +193,12 @@ def segment_by_projection(image_path: str) -> List[dict]:
     thresh = _preprocess(img)
 
     # --- Paso 1: Detectar líneas de texto via proyección horizontal ---
+    # min_gap=6: tolera que una plumada/rúbrica cruce brevemente el hueco entre
+    # líneas sin fusionarlas; sin esto, la cursiva conectada agrupaba párrafos
+    # enteros en una sola "línea" (calibrado contra GT real).
     h_proj = np.sum(thresh, axis=1)  # suma de píxeles por fila
-    threshold_h = np.max(h_proj) * 0.05
-
-    in_line = False
-    lines = []
-    line_start = 0
-    for row_idx, val in enumerate(h_proj):
-        if not in_line and val > threshold_h:
-            in_line = True
-            line_start = row_idx
-        elif in_line and val <= threshold_h:
-            in_line = False
-            if row_idx - line_start > 5:  # al menos 5px de alto
-                lines.append((line_start, row_idx))
-    if in_line:
-        lines.append((line_start, img_h))
+    threshold_h = np.max(h_proj) * 0.08
+    lines = _segment_1d(h_proj, threshold_h, min_gap=6, min_run=5)
 
     results = []
     word_idx = 0
@@ -175,34 +207,17 @@ def segment_by_projection(image_path: str) -> List[dict]:
     for (row_start, row_end) in lines:
         line_strip = thresh[row_start:row_end, :]
         v_proj = np.sum(line_strip, axis=0)
-        threshold_v = np.max(v_proj) * 0.02 if np.max(v_proj) > 0 else 1
+        threshold_v = np.max(v_proj) * 0.05 if np.max(v_proj) > 0 else 1
+        # min_gap=10: hueco real entre palabras (p25 ~17.6px en la GT) — antes
+        # se cortaba palabra apenas la proyección caía por una sola columna.
+        words = _segment_1d(v_proj, threshold_v, min_gap=10, min_run=1)
 
-        in_word = False
-        word_start = 0
-        for col_idx, val in enumerate(v_proj):
-            if not in_word and val > threshold_v:
-                in_word = True
-                word_start = col_idx
-            elif in_word and val <= threshold_v:
-                in_word = False
-                w = col_idx - word_start
-                h = row_end - row_start
-                if _filter_bbox(word_start, row_start, w, h, img_w, img_h, min_area=50):
-                    results.append({
-                        "x": int(word_start),
-                        "y": int(row_start),
-                        "width": int(w),
-                        "height": int(h),
-                        "confidence": 0.65,
-                        "order_index": word_idx,
-                    })
-                    word_idx += 1
-        if in_word:
-            w = img_w - word_start
+        for (col_start, col_end) in words:
+            w = col_end - col_start
             h = row_end - row_start
-            if _filter_bbox(word_start, row_start, w, h, img_w, img_h, min_area=50):
+            if _filter_bbox(col_start, row_start, w, h, img_w, img_h, min_area=50):
                 results.append({
-                    "x": int(word_start),
+                    "x": int(col_start),
                     "y": int(row_start),
                     "width": int(w),
                     "height": int(h),
@@ -225,20 +240,27 @@ def segment_by_mser(image_path: str) -> List[dict]:
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     mser = cv2.MSER_create(
-        _delta=5,
-        _min_area=60,
-        _max_area=int(img_w * img_h * 0.01),
+        delta=5,
+        min_area=60,
+        # 0.0035 en vez de 0.01: contra la GT real, 1% de esta imagen (~336k px²)
+        # superaba hasta la palabra más grande observada (293k px²) — el filtro
+        # no rechazaba ni líneas completas fusionadas.
+        max_area=int(img_w * img_h * 0.0035),
     )
     regions, _ = mser.detectRegions(gray)
 
     raw_boxes = []
     for region in regions:
         x, y, w, h = cv2.boundingRect(region.reshape(-1, 1, 2))
-        if _filter_bbox(x, y, w, h, img_w, img_h):
+        # max_aspect=9: una "línea larga" fusionada es justamente una caja de
+        # aspecto extremo que el default (20) dejaba pasar.
+        if _filter_bbox(x, y, w, h, img_w, img_h, max_aspect=9.0):
             raw_boxes.append((x, y, w, h))
 
     # Fusionar boxes cercanos para agrupar en palabras
-    merged = _merge_nearby_boxes(raw_boxes, gap_x=18, gap_y=12)
+    # gap_x=12 (antes 18): por debajo del hueco real p25 entre palabras (~17.6px)
+    # para no fusionar palabras distintas.
+    merged = _merge_nearby_boxes(raw_boxes, gap_x=12, gap_y=12)
     merged = sorted(merged, key=lambda b: (b[1] // 40, b[0]))
 
     results = []

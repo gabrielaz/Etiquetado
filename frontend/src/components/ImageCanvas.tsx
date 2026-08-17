@@ -3,6 +3,8 @@ import { Stage, Layer, Image as KonvaImage, Rect, Transformer, Text } from 'reac
 import useImage from 'use-image'
 import Konva from 'konva'
 import type { Word, LabelSchema, SegmentedWord } from '../../types'
+import { useZoomPan } from '../hooks/useZoomPan'
+import { ZoomControls } from './ZoomControls'
 
 interface ImageCanvasProps {
   imageUrl: string
@@ -33,6 +35,11 @@ export function ImageCanvas({
   const [image, imageStatus] = useImage(imageUrl, 'anonymous')
   const transformerRef = useRef<Konva.Transformer>(null)
   const selectedRef = useRef<Konva.Rect | null>(null)
+  const { stageScale, stagePos, setStagePos, handleWheel, zoomIn, zoomOut, resetZoom } = useZoomPan()
+
+  useEffect(() => {
+    resetZoom()
+  }, [imageUrl, resetZoom])
 
   // Escala para ajustar imagen al contenedor
   const scale = image
@@ -73,7 +80,7 @@ export function ImageCanvas({
     if (!drawingMode) return
     if (e.target !== e.target.getStage() && !(e.target instanceof Konva.Image)) return
     const stage = e.target.getStage()!
-    const pos = stage.getPointerPosition()!
+    const pos = stage.getRelativePointerPosition()!
     drawing.current = true
     drawStart.current = pos
     setDrawRect({ x: pos.x, y: pos.y, w: 0, h: 0 })
@@ -82,7 +89,7 @@ export function ImageCanvas({
 
   const handleStageMouseMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     if (!drawing.current) return
-    const pos = e.target.getStage()!.getPointerPosition()!
+    const pos = e.target.getStage()!.getRelativePointerPosition()!
     setDrawRect({
       x: Math.min(pos.x, drawStart.current.x),
       y: Math.min(pos.y, drawStart.current.y),
@@ -112,7 +119,7 @@ export function ImageCanvas({
   const imgOffsetY = (containerSize.height - imgH) / 2
 
   return (
-    <div ref={containerRef} className="flex-1 bg-slate-100 overflow-hidden" style={{ cursor: drawingMode ? 'crosshair' : 'default' }}>
+    <div ref={containerRef} className="relative flex-1 bg-slate-100 overflow-hidden" style={{ cursor: drawingMode ? 'crosshair' : 'default' }}>
       {imageStatus === 'loading' && (
         <div className="flex items-center justify-center h-full text-slate-400">Cargando imagen…</div>
       )}
@@ -122,6 +129,17 @@ export function ImageCanvas({
       <Stage
         width={containerSize.width}
         height={containerSize.height}
+        scaleX={stageScale}
+        scaleY={stageScale}
+        x={stagePos.x}
+        y={stagePos.y}
+        draggable={!drawingMode}
+        onWheel={handleWheel}
+        onDragEnd={(e) => {
+          if (e.target === e.target.getStage()) {
+            setStagePos({ x: e.target.x(), y: e.target.y() })
+          }
+        }}
         onMouseDown={handleStageMouseDown}
         onMouseMove={handleStageMouseMove}
         onMouseUp={handleStageMouseUp}
@@ -157,7 +175,7 @@ export function ImageCanvas({
                 ref={isSelected ? (node) => { selectedRef.current = node } : undefined}
                 x={x} y={y} width={w} height={h}
                 stroke={color}
-                strokeWidth={isSelected ? 2.5 : 1.5}
+                strokeWidth={(isSelected ? 2.5 : 1.5) / stageScale}
                 fill={isSelected ? `${color}22` : `${color}11`}
                 cornerRadius={2}
                 draggable={!drawingMode}
@@ -199,7 +217,7 @@ export function ImageCanvas({
               width={pw.bbox.width * scale}
               height={pw.bbox.height * scale}
               stroke="#f59e0b"
-              strokeWidth={1.5}
+              strokeWidth={1.5 / stageScale}
               fill="#f59e0b18"
               dash={[4, 3]}
               cornerRadius={2}
@@ -213,7 +231,7 @@ export function ImageCanvas({
               x={drawRect.x} y={drawRect.y}
               width={drawRect.w} height={drawRect.h}
               stroke="#3b82f6"
-              strokeWidth={1.5}
+              strokeWidth={1.5 / stageScale}
               fill="#3b82f620"
               dash={[4, 3]}
               listening={false}
@@ -232,6 +250,14 @@ export function ImageCanvas({
           />
         </Layer>
       </Stage>
+      {image && (
+        <ZoomControls
+          zoomPercent={Math.round(stageScale * 100)}
+          onZoomIn={() => zoomIn({ x: containerSize.width / 2, y: containerSize.height / 2 })}
+          onZoomOut={() => zoomOut({ x: containerSize.width / 2, y: containerSize.height / 2 })}
+          onReset={resetZoom}
+        />
+      )}
     </div>
   )
 }

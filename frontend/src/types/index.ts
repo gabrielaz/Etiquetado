@@ -162,4 +162,18 @@ export interface LayoutRegionUpdate {
   region_type_id?: number | null
   order_index?: number
   notes?: string
+  source: 'manual' | 'auto'
+}
+
+export interface SegmentedLayoutRegion {
+  bbox: BBox
+  region_type_name: string
+  confidence: number
+  order_index: number
+}
+
+export interface LayoutRegionSegmentationResult {
+  document_id: number
+  total_regions: number
+  regions: SegmentedLayoutRegion[]
 }

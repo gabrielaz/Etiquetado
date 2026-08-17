@@ -1,0 +1,77 @@
+# --- Herramientas de IA / asistentes ---
+.claude/
+.serena/
+graphify-out/
+.cursor/
+.aider*
+CLAUDE.local.md
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+env/
+.env
+.env.*
+!.env.example
+
+# --- Node / frontend ---
+node_modules/
+dist/
+dist-ssr/
+build/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Base de datos y uploads (datos locales, no versionar) ---
+*.db
+*.db.bak
+*.sqlite
+*.sqlite3
+backend/uploads/
+
+# --- Modelos entrenados (pesan cientos de MB, exceden el limite de GitHub) ---
+*.onnx
+*.pt
+*.pth
+*.h5
+*.ckpt
+*.safetensors
+
+# --- Datasets e imagenes de prueba (no versionar, se regeneran o viven fuera del repo) ---
+colab/dataset_layout/
+colab/dataset_*.zip
+# Las imagenes exportadas son copias PNG de datos-docente/ (regenerables con
+# build_gt_pixel.py); las mascaras GT si se versionan, porque la DB no esta en git.
+colab/dataset_layout_arabe/images/
+pruebas-etiquetado/
+*.tif
+*.tiff
+
+# --- Editores / SO ---
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.sw?
+
+# --- Logs y temporales ---
+*.log
+logs/
+tmp/
+.ipynb_checkpoints/
+
+# --- Replica De Nardin (fase 1) ---
+datos-diva/
+backend/paper_replica/.venv/
+backend/paper_replica/runs/
+backend/paper_replica/**/__pycache__/
+
+paper_replica.zip
